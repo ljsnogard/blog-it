@@ -6,9 +6,9 @@
 
 在 Rust 中要取消一个异步操作，如果这个异步操作已经被 `Future` 所包装，那么只需要 `drop()`。依托于 RAII 语义，和异步任务相关的资源通常都会被恰当地释放。如果是在其他线程运行的任务，通过 detach 或者同样简单地 drop 线程，也可以达到类似的效果。  
 
-这些都可以归类为不太优雅的取消方式。当然，对于不关心资源管理的任务调用者来说可能反而是优雅的，因为业务代码中不需要关心丰富而复杂的细节。但是对于异步任务实现者，或者库作者来说，评价的立场则是完全相反的。  
+这些都可以归类为不太优雅的取消方式。当然，对于不关心资源管理的任务调用者来说可能反而是优雅的，因为业务代码中不需要关心丰富而复杂的细节。但是对于异步任务实现者，或者库作者来说，评价则是完全相反的。  
 
-关于什么是优雅，在 tokio 中式具有明确的实践——[Graceful Shutdown](https://tokio.rs/tokio/topics/shutdown)。
+关于什么是优雅，在 tokio 中是有明确的实践方法的——[Graceful Shutdown](https://tokio.rs/tokio/topics/shutdown)。
 
 在本文中，我们采取类似的理念来定义，什么是优雅地取消异步任务：
 1. 让异步任务接收取消的信号
@@ -17,7 +17,7 @@
 
 ## 为何要优雅
 
-在 tokio 的文档或者事件中，我们可以看到优雅取消任务针对的都是比较重量级的应用场景，譬如说，优雅地关闭一个服务器。  
+在 tokio 的举例中我们可以看到优雅取消任务针对的都是比较重量级的应用场景，譬如说，优雅地关闭一个服务器。  
 在这种涉及多种资源甚至涉及到服务器集群维护的场景中，显然是有价值的，例如，可以更快地关闭 TCP 连接，更快地让操作系统回收资源，更快地让服务器集群发现节点失效，等等。  
 因为 Rust 的 RAII 语义，我们通常不需要担心资源的最终回收，除非这些资源很难依靠**单机上的 RAII 语义**来保证。  
 但是更小尺度的应用中，这样的优雅是否也有实践价值呢？  
@@ -107,7 +107,7 @@ pub trait TrInput {
     fn read_async<'f>(
         &'f mut,
         buf: &'f mut [MaybeUninit<T>],
-    ) -> impl TrMayCancel<'a, MayCancelOutput = Result<usize, Self::Err>>;
+    ) -> impl TrMayCancel<'f, MayCancelOutput = Result<usize, Self::Err>>;
 }
 ```
 
@@ -132,9 +132,20 @@ let _ = input.read_async(&mut buf).may_cancel_with(&mut tok).await;
 async fn my_device_read_async<'f, C: TrCancellationToken>(
     input: &'f mut MyInput,
     buffer: &'f mut [u8],
-    token: &'f mut impl C,
+    token: &'f mut C,
 ) -> Result<usize, MyInputError> {
     // 实现代码
+}
+
+impl TrInput<u8> for MyInput {
+    type Err = MyInputError;
+
+    fn read_async<'f>(
+        &'f mut self,
+        buf: &'f mut [MaybeUninit<T>],
+    ) -> impl TrMayCancel<'f, MayCancelOutput = Result<usize, Self::Err>> {
+        MyDeviceReadAsync(self, buf)
+    }
 }
 ```
 
